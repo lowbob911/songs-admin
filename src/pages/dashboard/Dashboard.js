@@ -176,7 +176,7 @@ export default function Dashboard(params) {
                     )}
                 </div>
                 <div className="col-12 col-lg-4">
-                    {currentNumber && <iframe className="w-100 h-100" srcDoc={`<div style="text-align: center; white-space: pre-wrap">${text.getCurrentContent().getPlainText()}</div>`}/>}
+                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentNumber)) && <iframe className="w-100 h-100" srcDoc={`<div style="text-align: center; white-space: pre-wrap">${text.getCurrentContent().getPlainText()}</div>`}/>}
                 </div>
             </div>
         </div>

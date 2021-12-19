@@ -84,8 +84,7 @@ export default function Dashboard(params) {
                 return;
             }
 
-            const nextNumber = (songs.length > 0 ? Math.max(...songs.map(s => s.number)) : 0) + 1;
-
+            const nextNumber = (songs.length > 0 ? Math.max(...songs.filter(s => s.number).map(s => s.number)) : 0) + 1;
             const song = {
                 number: nextNumber
             };

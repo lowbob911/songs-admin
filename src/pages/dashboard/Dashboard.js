@@ -7,6 +7,9 @@ import Button from "react-bootstrap/Button";
 const MODE_NEW = "NEW";
 const MODE_UPDATE = "UPDATE";
 
+const chords = `span.chunk { position: relative; display: inline-flex; flex-direction: column; vertical-align: bottom; } span.chunk:before { font-size: 0.6em; content: attr(data-chord); position: relative; vertical-align: bottom;`;
+const previewStyles = `div {margin: 30px 20px; text-align: center; white-space: pre-wrap;} ${chords}`;
+
 export default function Dashboard(params) {
     const [songs, setSongs] = useState([]);
 
@@ -14,27 +17,43 @@ export default function Dashboard(params) {
     const [mode, setMode] = useState(null);
     const [title, setTitle] = useState("");
     const [text, setText] = useState("");
+    const [userText, setUserText] = useState("");
 
     const [validationErrors, setValidationErrors] = useState({});
 
     useEffect(() => {
         const songsRef = ref(params.db, 'songs');
         onValue(songsRef, (snapshot) => {
-            setSongs(snapshot.val().filter(s => s));
+            setSongs(snapshot.val().map(s => ({...s})));
         });
     }, []);
+
+    useEffect(() => {
+        let textToSet = "";
+        if (userText) {
+            textToSet = userText.getCurrentContent().getPlainText().replace(/{.*?{!}/g, a => {
+                return `<span class="chunk" data-chord="${a.match(/{([^!]*?(?=}))/)[1]}">${a.match(/}(.*?(?={!}))/)[1]}</span>`
+            })
+        }
+        setText(textToSet);
+    }, [userText]);
 
     function setCurrentSong(song){
         setMode(MODE_UPDATE);
         setCurrentNumber(song.number);
         setTitle(song.title);
-        setText(EditorState.createWithText(song?.text || ""));
+
+        const text = song.text.replace(/<span class="chunk".*?<\/span>/g, function(a){
+            return `{${a.match(/data-chord="(.*?(?="))/)[1]}}${a.match(/<span class="chunk".*>(.*?(?=<))/)[1]}{!}`;
+        });
+
+        setUserText(EditorState.createWithText(text));
     }
 
     function setCreateMode() {
         setMode(MODE_NEW);
         setTitle("");
-        setText(EditorState.createWithText(""));
+        setUserText(EditorState.createWithText(""));
         setCurrentNumber(null);
     }
 
@@ -83,7 +102,7 @@ export default function Dashboard(params) {
 
     function populateSong(song) {
         song.title = title;
-        song.text = text.getCurrentContent().getPlainText();
+        song.text = text;
         song.updated = Date.now()
     }
 
@@ -94,7 +113,7 @@ export default function Dashboard(params) {
             errors.title = true;
         }
 
-        if(!text.getCurrentContent().getPlainText()) {
+        if(!text) {
             errors.text = true;
         }
 
@@ -108,7 +127,7 @@ export default function Dashboard(params) {
                     alert("deleted!");
                     setCurrentNumber(null);
                     setTitle("");
-                    setText("");
+                    setUserText("");
                 })
         }
     }
@@ -149,8 +168,8 @@ export default function Dashboard(params) {
                                 <div>
                                     Text:
                                     <div className={`${validationErrors.text && 'is-invalid'}`}>
-                                        <Editor editorState={text}
-                                                onChange={setText}
+                                        <Editor editorState={userText}
+                                                onChange={setUserText}
                                                 className={"test"}
                                         />
                                     </div>
@@ -176,7 +195,7 @@ export default function Dashboard(params) {
                     )}
                 </div>
                 <div className="col-12 col-lg-4">
-                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentNumber)) && <iframe className="w-100 h-100" srcDoc={`<div style="text-align: center; white-space: pre-wrap">${text.getCurrentContent().getPlainText()}</div>`}/>}
+                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentNumber)) && <iframe className="w-100 h-100" srcDoc={`<style>${previewStyles}</style><div>${text}</div>`}/>}
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from "react";
-import { onValue, ref, set, remove} from "firebase/database";
+import { onValue, ref, set, remove, query, orderByChild, startAt} from "firebase/database";
 import {Editor, EditorState} from 'draft-js';
 import SongsList from "./SongsList";
 import Button from "react-bootstrap/Button";
@@ -13,7 +13,7 @@ const previewStyles = `div {margin: 30px 20px; text-align: center; white-space: 
 export default function Dashboard(params) {
     const [songs, setSongs] = useState([]);
 
-    const [currentNumber, setCurrentNumber] = useState(null);
+    const [currentKey, setCurrentKey] = useState(null);
     const [mode, setMode] = useState(null);
     const [title, setTitle] = useState("");
     const [text, setText] = useState("");
@@ -24,7 +24,11 @@ export default function Dashboard(params) {
     useEffect(() => {
         const songsRef = ref(params.db, 'songs');
         onValue(songsRef, (snapshot) => {
-            setSongs(snapshot.val().map(s => ({...s})));
+            const fetchedSongs = [];
+            snapshot.forEach(s => {
+                fetchedSongs.push({...s.val(), key: s.key});
+            });
+            setSongs(fetchedSongs);
         });
     }, []);
 
@@ -40,7 +44,7 @@ export default function Dashboard(params) {
 
     function setCurrentSong(song){
         setMode(MODE_UPDATE);
-        setCurrentNumber(song.number);
+        setCurrentKey(song.key);
         setTitle(song.title);
 
         const text = song.text.replace(/<span class="chunk".*?<\/span>/g, function(a){
@@ -54,22 +58,22 @@ export default function Dashboard(params) {
         setMode(MODE_NEW);
         setTitle("");
         setUserText(EditorState.createWithText(""));
-        setCurrentNumber(null);
+        setCurrentKey(null);
     }
 
     function updateSong() {
-        if(currentNumber) {
+        if(currentKey) {
             const errors = validateForm();
             setValidationErrors(errors);
             if(Object.keys(errors).length > 0) {
                 return;
             }
 
-            const song = {...songs.find(s => s && s.number === currentNumber)};
+            const song = {...songs.find(s => s && s.key === currentKey)};
 
             populateSong(song);
 
-            set(ref(params.db, 'songs/' + currentNumber), song)
+            set(ref(params.db, 'songs/' + currentKey), song)
                 .then(() => {
                     alert("Updated")
                 });
@@ -90,11 +94,12 @@ export default function Dashboard(params) {
             };
             populateSong(song);
 
-            set(ref(params.db, 'songs/' + nextNumber), song)
+            const nextKey = (songs.length > 0 ? Math.max(...songs.filter(s => s.key).map(s => s.key)) : 0) + 1;
+            set(ref(params.db, 'songs/' + nextKey), song)
                 .then(() => {
                     alert("Created");
                     setMode(MODE_UPDATE);
-                    setCurrentNumber(nextNumber);
+                    setCurrentKey(nextKey);
                 });
         }
     }
@@ -119,14 +124,33 @@ export default function Dashboard(params) {
         return errors;
     }
 
-    function deleteSong(number) {
+    function deleteSong(key) {
         if(window.confirm("Are you sure want to delete Song?")) {
-            remove(ref(params.db, 'songs/' + number))
+            const song = {...songs.find(s => s.key === key)};
+            remove(ref(params.db, 'songs/' + key))
                 .then(() => {
                     alert("deleted!");
-                    setCurrentNumber(null);
+                    setCurrentKey(null);
                     setTitle("");
                     setUserText("");
+
+                    const songsRef = ref(params.db, 'songs');
+                    const mostViewedPosts = query(songsRef, orderByChild('number'), startAt(song.number+1));
+
+                    let songsToUpdate = [];
+                    onValue(mostViewedPosts, (snapshot) => {
+                        snapshot.forEach((snapshot) => {
+                            songsToUpdate.push({key: snapshot.key, val: snapshot.val()});
+                        });
+                    });
+
+                    songsToUpdate.forEach((s) => {
+                        const val = s.val;
+                        val.number = val.number - 1;
+                        val.updated = Date.now();
+
+                        set(ref(params.db, 'songs/' + s.key), val);
+                    });
                 })
         }
     }
@@ -149,10 +173,10 @@ export default function Dashboard(params) {
                     </div>
                 </div>
                 <div className="col-12 col-lg-4">
-                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentNumber)) && (
+                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentKey)) && (
                         <div className="card">
                             <h5 className="card-header">
-                                {mode === MODE_NEW ? 'Create Song' : 'Update Song '+currentNumber}
+                                {mode === MODE_NEW ? 'Create Song' : 'Update Song '+title}
                             </h5>
                             <div className="card-body">
                                 <div>
@@ -179,8 +203,8 @@ export default function Dashboard(params) {
                                 <div className="mt-1 text-center">
                                     {mode === MODE_UPDATE &&
                                     <>
-                                        <Button variant="primary" className="me-2" onClick={() => updateSong(currentNumber)}>Update</Button>
-                                        <Button variant="danger" onClick={() => deleteSong(currentNumber)}>Delete</Button>
+                                        <Button variant="primary" className="me-2" onClick={() => updateSong(currentKey)}>Update</Button>
+                                        <Button variant="danger" onClick={() => deleteSong(currentKey)}>Delete</Button>
                                     </>
                                     }
                                     {mode === MODE_NEW &&
@@ -194,7 +218,7 @@ export default function Dashboard(params) {
                     )}
                 </div>
                 <div className="col-12 col-lg-4">
-                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentNumber)) && <iframe className="w-100 h-100" srcDoc={`<style>${previewStyles}</style><div>${text}</div>`}/>}
+                    {(mode === MODE_NEW || (mode === MODE_UPDATE && currentKey)) && <iframe className="w-100 h-100" srcDoc={`<style>${previewStyles}</style><div>${text}</div>`}/>}
                 </div>
             </div>
         </div>

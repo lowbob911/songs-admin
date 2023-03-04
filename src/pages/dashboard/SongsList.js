@@ -12,7 +12,7 @@ export default function SongsList({songs, onSelect}) {
             </thead>
             <tbody>
             {songs.map(song => (
-                <tr key={song.number}>
+                <tr key={song.key}>
                     <th>{song.number}</th>
                     <td>{song.title}</td>
                     <td>
